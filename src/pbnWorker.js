@@ -139,6 +139,24 @@ self.onmessage = function (e) {
         });
       }
       
+      // Step 6: Generate SVG path outlines
+      let svgPathString = `M0,0h${width}v${height}H0z`;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          const compId = componentIds[idx];
+          
+          // Right boundary
+          if (x < width - 1 && componentIds[idx + 1] !== compId) {
+            svgPathString += `M${x + 1},${y}v1`;
+          }
+          // Bottom boundary
+          if (y < height - 1 && componentIds[idx + width] !== compId) {
+            svgPathString += `M${x},${y + 1}h1`;
+          }
+        }
+      }
+      
       self.postMessage({ status: 'progress', message: 'Finalizing...', progress: 95 });
       
       // Post result back with Transferables to save memory/time
@@ -150,7 +168,8 @@ self.onmessage = function (e) {
           outlineData,
           labels,
           width,
-          height
+          height,
+          svgPathString
         }
       }, [quantizedData.buffer, outlineData.buffer]);
       

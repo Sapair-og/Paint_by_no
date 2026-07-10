@@ -70,6 +70,26 @@ const PRESETS = {
   }
 };
 
+// Crayon physical names mapping
+const WAX_NAMES = {
+  '#ED0A3F': 'Red', '#FF681F': 'Red-Orange', '#BB3385': 'Red-Violet', '#FF8833': 'Orange',
+  '#FFAE42': 'Yellow-Orange', '#FBE870': 'Yellow', '#C5E17A': 'Yellow-Green', '#1CAC78': 'Green',
+  '#0095B6': 'Blue-Green', '#0066FF': 'Blue', '#6456B7': 'Blue-Violet', '#8359A3': 'Violet (Purple)',
+  '#AF593E': 'Brown', '#000000': 'Black', '#FFFFFF': 'White', '#8B8680': 'Gray',
+  '#FDD5B1': 'Apricot', '#1DACD6': 'Cerulean', '#4F69C6': 'Indigo', '#FD0E35': 'Scarlet',
+  '#F7468A': 'Violet-Red', '#3C69E7': 'Bluetiful', '#01786F': 'Pine Green', '#FCD667': 'Goldenrod'
+};
+
+// Prismacolor colored pencil physical names mapping
+const PENCIL_NAMES = {
+  '#FFEF00': 'Canary Yellow', '#F3A23A': 'Spanish Orange', '#FF8F00': 'Orange', '#FCD667': 'Goldenrod',
+  '#FFD0A9': 'Peach', '#F62817': 'Poppy Red', '#E30022': 'Crimson Red', '#7C3030': 'Tuscan Red',
+  '#FFC0CB': 'Pink', '#C8509B': 'Mulberry/Magenta', '#B09FCA': 'Parma Violet', '#7F00FF': 'Violet',
+  '#324AB2': 'Violet Blue', '#0073CF': 'True Blue', '#2A52BE': 'Cerulean Blue', '#00416A': 'Indigo Blue',
+  '#8DB600': 'Apple Green', '#089404': 'True Green', '#355E3B': 'Grass Green', '#013220': 'Dark Green',
+  '#8B5A2B': 'Sienna Brown', '#5C4033': 'Dark Brown', '#000000': 'Black', '#FFFFFF': 'White'
+};
+
 function App() {
   const [imageSrc, setImageSrc] = useState(null);
   const [imageData, setImageData] = useState(null);
@@ -226,6 +246,37 @@ function App() {
       const hex = x.toString(16);
       return hex.length === 1 ? '0' + hex : hex;
     }).join('');
+  };
+
+  // Physical color match recommender
+  const getClosestColorMatch = (hex, presetKey) => {
+    if (!hex) return null;
+    const rgb = hexToRgb(hex);
+    const preset = PRESETS[presetKey];
+    if (!preset) return null;
+    
+    let minDist = Infinity;
+    let bestHex = null;
+    
+    preset.colors.forEach(presetHex => {
+      const prgb = hexToRgb(presetHex);
+      const dist = (rgb[0] - prgb[0])**2 + (rgb[1] - prgb[1])**2 + (rgb[2] - prgb[2])**2;
+      if (dist < minDist) {
+        minDist = dist;
+        bestHex = presetHex;
+      }
+    });
+    
+    if (!bestHex) return null;
+    
+    // Max RGB 3D Euclidean distance is sqrt(3 * 255^2) = 441.67
+    const similarity = Math.round((1 - Math.sqrt(minDist) / 441.67) * 100);
+    const nameMap = presetKey === 'wax24' ? WAX_NAMES : PENCIL_NAMES;
+    return {
+      name: nameMap[bestHex] || bestHex,
+      hex: bestHex,
+      similarity
+    };
   };
 
   // Image upload
@@ -473,7 +524,6 @@ function App() {
 
   // Bulk Import of Color Codes
   const handleBulkImport = () => {
-    // Regex matches 6-character HEX color codes (optionally starting with #)
     const hexRegex = /#?([0-9A-Fa-f]{6})\b/g;
     const matches = [];
     let match;
@@ -491,12 +541,10 @@ function App() {
     }
 
     let nextPalette = [...customPalette];
-    // If they were on a preset, we want to copy the preset colors first
     if (selectedPreset !== 'auto' && selectedPreset !== 'custom') {
       nextPalette = [...PRESETS[selectedPreset].colors];
     }
 
-    // Merge and filter out duplicates
     const mergedPalette = [...new Set([...nextPalette, ...matches])];
     setCustomPalette(mergedPalette);
     setSelectedPreset('custom');
@@ -654,6 +702,40 @@ function App() {
     doc.save(`${baseName}-paint-by-numbers.pdf`);
   };
 
+  // Compile vector SVG outlines document
+  const exportToSVG = () => {
+    if (!result || !result.svgPathString) return;
+    const { width, height, labels } = result;
+    
+    let svgText = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">\n`;
+    // Add white background canvas
+    svgText += `  <rect width="${width}" height="${height}" fill="white" />\n`;
+    // Add boundary outline paths
+    svgText += `  <path d="${result.svgPathString}" stroke="#333333" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none" />\n`;
+    
+    // Add text numbers for coloring
+    svgText += `  <g font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}px" font-weight="bold" fill="#4b5563" text-anchor="middle" dominant-baseline="central">\n`;
+    labels.forEach((label) => {
+      if (label.size > 8) {
+        svgText += `    <text x="${label.x}" y="${label.y}">${label.number}</text>\n`;
+      }
+    });
+    svgText += `  </g>\n`;
+    svgText += `</svg>`;
+    
+    // Download SVG file
+    const blob = new Blob([svgText], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const baseName = imageInfo?.name.split('.')[0] || 'paint-by-numbers';
+    link.download = `${baseName}-blueprint.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleZoom = (direction) => {
     setZoom((prev) => {
       const step = direction === 'in' ? 1.25 : 0.8;
@@ -678,16 +760,40 @@ function App() {
             <p>Premium browser-side canvas vectorization engine</p>
           </div>
         </div>
-        <div className="header-actions">
+        <div className="header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           {result && (
-            <button className="btn-primary" onClick={exportToPDF}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              Export PDF Blueprint
-            </button>
+            <>
+              <button
+                className="palette-btn"
+                onClick={exportToSVG}
+                style={{
+                  padding: '0.65rem 1rem',
+                  borderRadius: '0.75rem',
+                  fontWeight: '600',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  height: '42px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.03)'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 13 7 8" />
+                  <line x1="12" y1="13" x2="12" y2="3" />
+                </svg>
+                Export Vector SVG
+              </button>
+              <button className="btn-primary" onClick={exportToPDF} style={{ padding: '0.65rem 1.25rem', width: 'auto', height: '42px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.25rem' }}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Export PDF Blueprint
+              </button>
+            </>
           )}
         </div>
       </header>
@@ -814,6 +920,46 @@ function App() {
                 ))}
               </div>
             </div>
+
+            {/* Color Matching Recommendations (Collapsible recommendation box) */}
+            {selectedColorIndex !== null && activePalette[selectedColorIndex] && (
+              <div style={{
+                marginTop: '0.5rem',
+                padding: '0.75rem',
+                backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '0.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem'
+              }}>
+                <p style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--accent-color)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.25rem' }}>
+                  🎨 Tool Recommendations
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>HEX Value:</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>{activePalette[selectedColorIndex].toUpperCase()}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Closest Crayon:</span>
+                  <span style={{ fontWeight: '600', color: '#fff' }}>
+                    {getClosestColorMatch(activePalette[selectedColorIndex], 'wax24')?.name}
+                    <span style={{ color: 'var(--success-color)', fontWeight: 'normal', marginLeft: '0.25rem' }}>
+                      ({getClosestColorMatch(activePalette[selectedColorIndex], 'wax24')?.similarity}%)
+                    </span>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Closest Pencil:</span>
+                  <span style={{ fontWeight: '600', color: '#fff' }}>
+                    {getClosestColorMatch(activePalette[selectedColorIndex], 'pencil24')?.name}
+                    <span style={{ color: 'var(--success-color)', fontWeight: 'normal', marginLeft: '0.25rem' }}>
+                      ({getClosestColorMatch(activePalette[selectedColorIndex], 'pencil24')?.similarity}%)
+                    </span>
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Add Custom Color / Eyedropper */}
             {imageSrc && (
