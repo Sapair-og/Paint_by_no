@@ -183,12 +183,20 @@ function App() {
     return () => viewport.removeEventListener('wheel', handleWheel);
   }, []);
 
-  // Set preset colors when selectedPreset changes
+  // Set preset colors and auto-trigger image processing when selectedPreset changes
   useEffect(() => {
+    let nextPal = [];
     if (selectedPreset !== 'auto' && selectedPreset !== 'custom') {
-      setCustomPalette(PRESETS[selectedPreset].colors);
+      nextPal = PRESETS[selectedPreset].colors;
+      setCustomPalette(nextPal);
     } else if (selectedPreset === 'auto') {
       setCustomPalette([]);
+    }
+    
+    // Auto-process if image is loaded
+    if (imageData) {
+      const activePal = selectedPreset === 'auto' ? null : (selectedPreset === 'custom' ? customPalette : nextPal);
+      processImage(imageData, k, minFacetSize, activePal, smoothingPasses);
     }
   }, [selectedPreset]);
 
@@ -854,18 +862,74 @@ function App() {
               2. Color Palette
             </h2>
             <div className="control-group">
-              <label className="control-label">Preset Brand / Medium</label>
-              <select
-                className="select-input"
-                value={selectedPreset}
-                onChange={(e) => setSelectedPreset(e.target.value)}
-              >
-                {Object.keys(PRESETS).map((key) => (
-                  <option key={key} value={key}>
-                    {PRESETS[key].name}
-                  </option>
-                ))}
-              </select>
+              <label className="control-label">Color Filters / Presets</label>
+              <div className="preset-grid" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem',
+                maxHeight: '260px',
+                overflowY: 'auto',
+                padding: '2px 4px 2px 2px',
+                border: '2.5px solid var(--border-color)',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(255, 255, 255, 0.4)'
+              }}>
+                {Object.keys(PRESETS).map((key) => {
+                  const preset = PRESETS[key];
+                  const isActive = selectedPreset === key;
+                  return (
+                    <button
+                      key={key}
+                      className={`palette-btn ${isActive ? 'active' : ''}`}
+                      onClick={() => setSelectedPreset(key)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        gap: '0.25rem',
+                        padding: '0.5rem 0.6rem',
+                        width: '100%',
+                        textAlign: 'left',
+                        boxShadow: isActive ? '1px 1px 0px var(--border-color)' : '2px 2px 0px var(--border-color)',
+                        transform: isActive ? 'translate(1px, 1px)' : 'none',
+                        border: '2.5px solid var(--border-color)',
+                        backgroundColor: isActive ? 'var(--accent-color)' : '#FFFFFF',
+                        color: isActive ? '#FFFFFF' : 'var(--text-primary)',
+                        height: 'auto'
+                      }}
+                    >
+                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', fontFamily: 'Outfit, sans-serif' }}>
+                        {preset.name}
+                      </span>
+                      {preset.colors && (
+                        <div style={{ display: 'flex', gap: '2px', width: '100%', height: '8px', borderRadius: '2px', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.1)' }}>
+                          {preset.colors.slice(0, 12).map((c, i) => (
+                            <div key={i} style={{ flex: 1, backgroundColor: c, height: '100%' }} />
+                          ))}
+                          {preset.colors.length > 12 && (
+                            <div style={{
+                              fontSize: '6px',
+                              fontWeight: 'bold',
+                              padding: '0 2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              backgroundColor: '#eee',
+                              color: '#333'
+                            }}>
+                              +{preset.colors.length - 12}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {!preset.colors && (
+                        <span style={{ fontSize: '0.65rem', color: isActive ? '#eee' : 'var(--text-secondary)', fontStyle: 'italic' }}>
+                          Auto-extracts palette from uploaded photo
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {selectedPreset === 'auto' && (
