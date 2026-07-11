@@ -923,17 +923,8 @@ function App() {
 
             {/* Color Matching Recommendations (Collapsible recommendation box) */}
             {selectedColorIndex !== null && activePalette[selectedColorIndex] && (
-              <div style={{
-                marginTop: '0.5rem',
-                padding: '0.75rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '0.5rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.4rem'
-              }}>
-                <p style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--accent-color)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.25rem' }}>
+              <div className="recs-card">
+                <p style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--accent-color)', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.25rem' }}>
                   🎨 Tool Recommendations
                 </p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
@@ -942,7 +933,7 @@ function App() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Closest Crayon:</span>
-                  <span style={{ fontWeight: '600', color: '#fff' }}>
+                  <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
                     {getClosestColorMatch(activePalette[selectedColorIndex], 'wax24')?.name}
                     <span style={{ color: 'var(--success-color)', fontWeight: 'normal', marginLeft: '0.25rem' }}>
                       ({getClosestColorMatch(activePalette[selectedColorIndex], 'wax24')?.similarity}%)
@@ -951,7 +942,7 @@ function App() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Closest Pencil:</span>
-                  <span style={{ fontWeight: '600', color: '#fff' }}>
+                  <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
                     {getClosestColorMatch(activePalette[selectedColorIndex], 'pencil24')?.name}
                     <span style={{ color: 'var(--success-color)', fontWeight: 'normal', marginLeft: '0.25rem' }}>
                       ({getClosestColorMatch(activePalette[selectedColorIndex], 'pencil24')?.similarity}%)
