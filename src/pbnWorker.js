@@ -156,6 +156,12 @@ self.onmessage = function (e) {
           }
         }
       }
+
+      // Map component IDs to their corresponding color indices
+      const componentColors = new Uint8Array(components.length);
+      for (let c = 0; c < components.length; c++) {
+        componentColors[components[c].id] = components[c].colorIndex;
+      }
       
       self.postMessage({ status: 'progress', message: 'Finalizing...', progress: 95 });
       
@@ -169,9 +175,16 @@ self.onmessage = function (e) {
           labels,
           width,
           height,
-          svgPathString
+          svgPathString,
+          componentIds,
+          componentColors
         }
-      }, [quantizedData.buffer, outlineData.buffer]);
+      }, [
+        quantizedData.buffer, 
+        outlineData.buffer, 
+        componentIds.buffer, 
+        componentColors.buffer
+      ]);
       
     } catch (err) {
       self.postMessage({ status: 'error', error: err.message });

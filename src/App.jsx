@@ -95,6 +95,9 @@ function App() {
   const [imageData, setImageData] = useState(null);
   const [imageInfo, setImageInfo] = useState(null);
 
+  // Video Clip State
+  const [videoSrc, setVideoSrc] = useState(null);
+
   // Settings
   const [k, setK] = useState(12);
   const [minFacetSize, setMinFacetSize] = useState(25);
@@ -107,6 +110,9 @@ function App() {
   const [palette, setPalette] = useState([]);
   const [selectedColorIndex, setSelectedColorIndex] = useState(null);
   
+  // Interactive Coloring Game State
+  const [coloredComponents, setColoredComponents] = useState({});
+
   // UI States
   const [activeTab, setActiveTab] = useState('outline');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -130,6 +136,7 @@ function App() {
   const canvasRef = useRef(null);
   const viewportRef = useRef(null);
   const workerRef = useRef(null);
+  const videoRef = useRef(null);
 
   // Initialize worker
   useEffect(() => {
@@ -146,6 +153,7 @@ function App() {
         setPalette(result.palette);
         setIsProcessing(false);
         setSelectedColorIndex(null);
+        setColoredComponents({}); // Reset virtual coloring on fresh process
       } else if (status === 'error') {
         console.error(error);
         setIsProcessing(false);
@@ -163,7 +171,7 @@ function App() {
   // Handle active canvas redraws
   useEffect(() => {
     drawCanvas();
-  }, [result, activeTab, selectedColorIndex, fontSize]);
+  }, [result, activeTab, selectedColorIndex, fontSize, coloredComponents]);
 
   // Viewport Zoom via Wheel
   useEffect(() => {
@@ -277,7 +285,7 @@ function App() {
     
     if (!bestHex) return null;
     
-    // Max RGB 3D Euclidean distance is sqrt(3 * 255^2) = 441.67
+    // Max RGB distance is sqrt(3 * 255^2) = 441.67
     const similarity = Math.round((1 - Math.sqrt(minDist) / 441.67) * 100);
     const nameMap = presetKey === 'wax24' ? WAX_NAMES : PENCIL_NAMES;
     return {
@@ -287,10 +295,53 @@ function App() {
     };
   };
 
-  // Image upload
+  // Coloring puzzle stats
+  const getShapeStatsForSelectedColor = () => {
+    if (!result || selectedColorIndex === null) return null;
+    const { componentColors } = result;
+    if (!componentColors) return null;
+    
+    let total = 0;
+    let colored = 0;
+    for (let i = 0; i < componentColors.length; i++) {
+      if (componentColors[i] === selectedColorIndex) {
+        total++;
+        if (coloredComponents[i]) {
+          colored++;
+        }
+      }
+    }
+    return { total, colored };
+  };
+
+  const getOverallPuzzleProgress = () => {
+    if (!result) return { total: 0, colored: 0, percent: 0 };
+    const { componentColors } = result;
+    if (!componentColors) return { total: 0, colored: 0, percent: 0 };
+    
+    const total = componentColors.length;
+    const colored = Object.keys(coloredComponents).length;
+    const percent = total > 0 ? Math.round((colored / total) * 100) : 0;
+    return { total, colored, percent };
+  };
+
+  // Image/Video upload
   const handleImageFile = (file) => {
-    if (!file || !file.type.startsWith('image/')) {
-      alert('Please upload a valid image file.');
+    if (!file) return;
+
+    if (file.type.startsWith('video/')) {
+      // Process video file
+      const url = URL.createObjectURL(file);
+      setVideoSrc(url);
+      setImageSrc(null);
+      setImageData(null);
+      setResult(null);
+      setImageInfo({ name: file.name, type: 'video' });
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload a valid image or video file.');
       return;
     }
 
@@ -322,6 +373,7 @@ function App() {
         const imgData = ctx.getImageData(0, 0, w, h);
         setImageData(imgData);
         setImageSrc(event.target.result);
+        setVideoSrc(null); // Clear video
         setImageInfo({
           name: file.name,
           width: img.width,
@@ -341,6 +393,57 @@ function App() {
       img.src = event.target.result;
     };
     reader.readAsDataURL(file);
+  };
+
+  // Video Frame Capture
+  const handleCaptureFrame = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 600;
+    canvas.height = video.videoHeight || 450;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Downscale captured frame for worker speed
+    const maxDim = 600;
+    let w = canvas.width;
+    let h = canvas.height;
+    if (w > maxDim || h > maxDim) {
+      if (w > h) {
+        h = Math.round((h * maxDim) / w);
+        w = maxDim;
+      } else {
+        w = Math.round((w * maxDim) / h);
+        h = maxDim;
+      }
+    }
+
+    const scaleCanvas = document.createElement('canvas');
+    scaleCanvas.width = w;
+    scaleCanvas.height = h;
+    const sCtx = scaleCanvas.getContext('2d');
+    sCtx.drawImage(canvas, 0, 0, w, h);
+
+    const imgData = sCtx.getImageData(0, 0, w, h);
+    setImageData(imgData);
+    setImageSrc(scaleCanvas.toDataURL('image/png'));
+    setImageInfo({
+      name: `Captured Frame: ${imageInfo?.name || 'Video'}`,
+      width: video.videoWidth,
+      height: video.videoHeight,
+      processedWidth: w,
+      processedHeight: h
+    });
+
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setColoredComponents({});
+
+    const activePal = selectedPreset === 'auto' ? null : (selectedPreset === 'custom' ? customPalette : PRESETS[selectedPreset].colors);
+    processImage(imgData, k, minFacetSize, activePal, smoothingPasses);
   };
 
   const onDragOver = (e) => {
@@ -366,7 +469,7 @@ function App() {
     const canvas = canvasRef.current;
     if (!canvas || !result) return;
     const ctx = canvas.getContext('2d');
-    const { width, height, quantizedData, outlineData, labels } = result;
+    const { width, height, quantizedData, outlineData, labels, componentIds, componentColors } = result;
 
     canvas.width = width;
     canvas.height = height;
@@ -381,28 +484,37 @@ function App() {
       const imgData = new ImageData(new Uint8ClampedArray(quantizedData), width, height);
       ctx.putImageData(imgData, 0, 0);
     } else if (activeTab === 'outline') {
-      if (selectedColorIndex !== null) {
-        // Highlight active color
+      if (componentIds && componentColors) {
+        // Draw interactive game canvas outlines + colored components
         const imgData = ctx.createImageData(width, height);
         const paletteRGB = result.palette.map(hexToRgb);
-        const targetRGB = paletteRGB[selectedColorIndex];
+        const targetRGB = selectedColorIndex !== null ? paletteRGB[selectedColorIndex] : null;
 
         for (let i = 0; i < outlineData.length; i += 4) {
           const isOutline = outlineData[i] === 0;
-          const qr = quantizedData[i];
-          const qg = quantizedData[i + 1];
-          const qb = quantizedData[i + 2];
+          const idx = i / 4;
+          const compId = componentIds[idx];
+          const isColored = coloredComponents[compId];
 
           if (isOutline) {
-            imgData.data[i] = 0;
-            imgData.data[i + 1] = 0;
-            imgData.data[i + 2] = 0;
+            imgData.data[i] = 44;
+            imgData.data[i + 1] = 38;
+            imgData.data[i + 2] = 39;
             imgData.data[i + 3] = 255;
-          } else if (qr === targetRGB[0] && qg === targetRGB[1] && qb === targetRGB[2]) {
+          } else if (isColored) {
+            // Fill correctly clicked components with actual solid color
+            const cIdx = componentColors[compId];
+            const rgb = paletteRGB[cIdx];
+            imgData.data[i] = rgb[0];
+            imgData.data[i + 1] = rgb[1];
+            imgData.data[i + 2] = rgb[2];
+            imgData.data[i + 3] = 255;
+          } else if (selectedColorIndex !== null && componentColors[compId] === selectedColorIndex) {
+            // Tint shapes matching selected color
             imgData.data[i] = targetRGB[0];
             imgData.data[i + 1] = targetRGB[1];
             imgData.data[i + 2] = targetRGB[2];
-            imgData.data[i + 3] = 90; // opacity overlay for visibility
+            imgData.data[i + 3] = 80;
           } else {
             imgData.data[i] = 255;
             imgData.data[i + 1] = 255;
@@ -412,25 +524,30 @@ function App() {
         }
         ctx.putImageData(imgData, 0, 0);
       } else {
+        // Fallback simple outline
         const imgData = new ImageData(new Uint8ClampedArray(outlineData), width, height);
         ctx.putImageData(imgData, 0, 0);
       }
 
       // Draw labels onto the canvas
-      ctx.font = `${fontSize}px Outfit, Inter, sans-serif`;
+      ctx.font = `bold ${fontSize}px Outfit, Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
       labels.forEach((label) => {
-        // Skip rendering numbers in micro-shapes to avoid overlapping visual noise
-        if (label.size > 12) {
+        // Check if component is already colored
+        const compId = componentIds ? componentIds[label.y * width + label.x] : -1;
+        const isColored = compId !== -1 && coloredComponents[compId];
+
+        // Hide numbers for colored shapes, show for uncolored shapes
+        if (!isColored && label.size > 12) {
           const isSelected = selectedColorIndex === label.colorIndex;
           if (selectedColorIndex !== null) {
-            ctx.fillStyle = isSelected ? '#000000' : 'rgba(100, 100, 100, 0.15)';
-            ctx.font = `${isSelected ? 'bold' : 'normal'} ${fontSize}px Outfit, Inter, sans-serif`;
+            ctx.fillStyle = isSelected ? '#2C2627' : 'rgba(44, 38, 39, 0.1)';
+            ctx.font = `bold ${isSelected ? fontSize + 1.5 : fontSize}px Outfit, Inter, sans-serif`;
           } else {
-            ctx.fillStyle = '#4b5563';
-            ctx.font = `${fontSize}px Outfit, Inter, sans-serif`;
+            ctx.fillStyle = '#6A5E60';
+            ctx.font = `bold ${fontSize}px Outfit, Inter, sans-serif`;
           }
           ctx.fillText(label.number.toString(), label.x, label.y);
         }
@@ -457,9 +574,9 @@ function App() {
     setIsDragging(false);
   };
 
-  // Eyedropper color swab picker
+  // Eyedropper and coloring clicks
   const handleCanvasClick = (e) => {
-    if (!eyedropperActive || !canvasRef.current || !result) return;
+    if (!canvasRef.current || !result) return;
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
 
@@ -470,22 +587,45 @@ function App() {
     const canvasX = Math.min(canvas.width - 1, Math.max(0, Math.floor(clickX * canvas.width)));
     const canvasY = Math.min(canvas.height - 1, Math.max(0, Math.floor(clickY * canvas.height)));
 
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
+    if (eyedropperActive) {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tempCtx = tempCanvas.getContext('2d');
 
-    const img = new Image();
-    img.onload = () => {
-      tempCtx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const pixel = tempCtx.getImageData(canvasX, canvasY, 1, 1).data;
-      const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
+      const img = new Image();
+      img.onload = () => {
+        tempCtx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const pixel = tempCtx.getImageData(canvasX, canvasY, 1, 1).data;
+        const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
 
-      // Add to palette configuration
-      addCustomColor(hex);
-      setEyedropperActive(false);
-    };
-    img.src = imageSrc;
+        // Add to palette configuration
+        addCustomColor(hex);
+        setEyedropperActive(false);
+      };
+      img.src = imageSrc;
+      return;
+    }
+
+    // Interactive Coloring Puzzle logic
+    if (activeTab === 'outline' && selectedColorIndex !== null) {
+      const { componentIds, componentColors } = result;
+      if (!componentIds || !componentColors) return;
+
+      const idx = canvasY * canvas.width + canvasX;
+      if (idx < 0 || idx >= componentIds.length) return;
+
+      const compId = componentIds[idx];
+      const correctColorIdx = componentColors[compId];
+
+      // Verify selected color matches actual shape segment color index
+      if (selectedColorIndex === correctColorIdx) {
+        setColoredComponents((prev) => ({
+          ...prev,
+          [compId]: true
+        }));
+      }
+    }
   };
 
   const addCustomColor = (colorHex) => {
@@ -716,12 +856,9 @@ function App() {
     const { width, height, labels } = result;
     
     let svgText = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">\n`;
-    // Add white background canvas
     svgText += `  <rect width="${width}" height="${height}" fill="white" />\n`;
-    // Add boundary outline paths
     svgText += `  <path d="${result.svgPathString}" stroke="#333333" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none" />\n`;
     
-    // Add text numbers for coloring
     svgText += `  <g font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}px" font-weight="bold" fill="#4b5563" text-anchor="middle" dominant-baseline="central">\n`;
     labels.forEach((label) => {
       if (label.size > 8) {
@@ -731,7 +868,6 @@ function App() {
     svgText += `  </g>\n`;
     svgText += `</svg>`;
     
-    // Download SVG file
     const blob = new Blob([svgText], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -757,6 +893,9 @@ function App() {
     setPan({ x: 0, y: 0 });
   };
 
+  const puzzleStats = getOverallPuzzleProgress();
+  const selectedColorStats = getShapeStatsForSelectedColor();
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -778,7 +917,7 @@ function App() {
                   padding: '0.65rem 1rem',
                   borderRadius: '0.75rem',
                   fontWeight: '600',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  border: '2px solid var(--border-color)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.4rem',
@@ -818,7 +957,7 @@ function App() {
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
-              1. Image Source
+              1. Image / Video Source
             </h2>
             <div
               className={`dropzone ${dragActive ? 'active' : ''}`}
@@ -827,14 +966,14 @@ function App() {
               onDrop={onDrop}
               onClick={() => document.getElementById('file-upload').click()}
             >
-              <div className="dropzone-icon">🖼️</div>
+              <div className="dropzone-icon">🎞️</div>
               <div className="dropzone-text">
-                <span className="dropzone-highlight">Click to upload</span> or drag and drop
+                <span className="dropzone-highlight">Upload Image / Video Clip</span>
               </div>
               <input
                 id="file-upload"
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
                 style={{ display: 'none' }}
                 onChange={(e) => e.target.files && handleImageFile(e.target.files[0])}
               />
@@ -843,7 +982,7 @@ function App() {
               <div className="image-file-info">
                 <span>{imageInfo.name}</span>
                 <span style={{ color: 'var(--text-secondary)' }}>
-                  {imageInfo.width}×{imageInfo.height}px
+                  {imageInfo.type === 'video' ? 'Video clip loaded' : `${imageInfo.width}×${imageInfo.height}px`}
                 </span>
               </div>
             )}
@@ -954,8 +1093,8 @@ function App() {
               <label className="control-label">
                 Active Colors ({activePalette.length})
                 {selectedColorIndex !== null && (
-                  <span style={{ color: 'var(--success-color)', fontSize: '0.75rem' }}>
-                    Active Color: #{selectedColorIndex + 1}
+                  <span style={{ color: 'var(--accent-color)', fontSize: '0.75rem', fontFamily: 'Silkscreen, sans-serif' }}>
+                    Color #{selectedColorIndex + 1}
                   </span>
                 )}
               </label>
@@ -985,7 +1124,7 @@ function App() {
               </div>
             </div>
 
-            {/* Color Matching Recommendations (Collapsible recommendation box) */}
+            {/* Color Matching & Puzzle Recommendations */}
             {selectedColorIndex !== null && activePalette[selectedColorIndex] && (
               <div className="recs-card">
                 <p style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--accent-color)', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.25rem' }}>
@@ -1013,6 +1152,14 @@ function App() {
                     </span>
                   </span>
                 </div>
+                {selectedColorStats && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', borderTop: '1px dashed var(--border-light)', paddingTop: '0.4rem', marginTop: '0.2rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Shapes Colored:</span>
+                    <span style={{ fontWeight: '700', color: 'var(--accent-color)' }}>
+                      {selectedColorStats.colored} / {selectedColorStats.total}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1194,14 +1341,19 @@ function App() {
               </div>
             ) : (
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Please upload an image to start workspace
+                Please upload an image or video clip to start workspace
               </span>
             )}
             
             {result && activeTab === 'outline' && (
-              <span style={{ fontSize: '0.8rem', color: 'var(--accent-color)', fontWeight: '500' }}>
-                💡 Click a color in the palette to highlight its shapes!
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                  Puzzle Progress: {puzzleStats.colored} / {puzzleStats.total} ({puzzleStats.percent}%)
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: '600' }}>
+                  💡 Select a color, then click outline shapes to paint them!
+                </span>
+              </div>
             )}
           </div>
 
@@ -1215,7 +1367,38 @@ function App() {
             onPointerLeave={handlePointerUp}
             style={{ cursor: eyedropperActive ? 'crosshair' : (isDragging ? 'grabbing' : 'grab') }}
           >
-            {imageSrc ? (
+            {videoSrc && !result ? (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '1rem',
+                width: '100%',
+                maxWidth: '540px',
+                backgroundColor: '#ffffff',
+                border: '2.5px solid var(--border-color)',
+                borderRadius: '8px',
+                padding: '1.25rem',
+                boxShadow: 'var(--shadow-md)'
+              }}>
+                <h3 style={{ fontSize: '0.85rem', color: 'var(--text-primary)', alignSelf: 'flex-start', borderBottom: '2px solid var(--border-light)', width: '100%', paddingBottom: '0.5rem', marginBottom: '0.25rem' }}>
+                  🎞️ Clip Frame Grabber
+                </h3>
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  controls
+                  crossOrigin="anonymous"
+                  style={{ width: '100%', borderRadius: '4px', border: '2px solid var(--border-color)', backgroundColor: '#000' }}
+                />
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textAlign: 'center', fontWeight: '500' }}>
+                  Play or scrub the video to your preferred frame, then click the button below to capture it.
+                </p>
+                <button className="btn-primary" onClick={handleCaptureFrame}>
+                  📸 Capture Selected Frame
+                </button>
+              </div>
+            ) : imageSrc ? (
               <div
                 className="viewport-canvas-container"
                 onClick={handleCanvasClick}
@@ -1231,7 +1414,7 @@ function App() {
                 <div className="empty-state-icon">🎨</div>
                 <h3>Start Your Custom Paint-by-Numbers</h3>
                 <p>
-                  Upload an image on the left. The app downscales, clusters colors, and smooths shapes directly in your browser.
+                  Upload an image or video clip on the left. The app downscales, clusters colors, and smooths shapes directly in your browser.
                 </p>
               </div>
             )}
