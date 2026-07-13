@@ -295,6 +295,57 @@ function App() {
     };
   };
 
+  // Paint mixing recipe solver (mathematical RYB/RGB approximation)
+  const getPaintRecipe = (hex) => {
+    if (!hex) return [];
+    const target = hexToRgb(hex);
+    const bases = [
+      { name: 'Red', rgb: [220, 20, 60] },
+      { name: 'Yellow', rgb: [255, 215, 0] },
+      { name: 'Blue', rgb: [0, 71, 171] },
+      { name: 'White', rgb: [255, 255, 255] },
+      { name: 'Black', rgb: [20, 20, 20] }
+    ];
+    
+    let bestDist = Infinity;
+    let bestRecipe = [];
+    
+    // Sample search for percentages in steps of 10%
+    for (let r = 0; r <= 10; r++) {
+      for (let y = 0; y <= 10 - r; y++) {
+        for (let b = 0; b <= 10 - r - y; b++) {
+          for (let w = 0; w <= 10 - r - y - b; w++) {
+            const k = 10 - r - y - b - w;
+            
+            const mr = Math.round((r * bases[0].rgb[0] + y * bases[1].rgb[0] + b * bases[2].rgb[0] + w * bases[3].rgb[0] + k * bases[4].rgb[0]) / 10);
+            const mg = Math.round((r * bases[0].rgb[1] + y * bases[1].rgb[1] + b * bases[2].rgb[1] + w * bases[3].rgb[1] + k * bases[4].rgb[1]) / 10);
+            const mb = Math.round((r * bases[0].rgb[2] + y * bases[1].rgb[2] + b * bases[2].rgb[2] + w * bases[3].rgb[2] + k * bases[4].rgb[2]) / 10);
+            
+            const dist = (mr - target[0])**2 + (mg - target[1])**2 + (mb - target[2])**2;
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestRecipe = [
+                { name: 'Red', part: r },
+                { name: 'Yellow', part: y },
+                { name: 'Blue', part: b },
+                { name: 'White', part: w },
+                { name: 'Black', part: k }
+              ].filter(p => p.part > 0);
+            }
+          }
+        }
+      }
+    }
+    
+    const totalParts = bestRecipe.reduce((sum, p) => sum + p.part, 0);
+    if (totalParts === 0) return [{ name: 'White', percentage: 100 }];
+    
+    return bestRecipe.map(p => ({
+      name: p.name,
+      percentage: Math.round((p.part / totalParts) * 100)
+    })).sort((a, b) => b.percentage - a.percentage);
+  };
+
   // Coloring puzzle stats
   const getShapeStatsForSelectedColor = () => {
     if (!result || selectedColorIndex === null) return null;
@@ -1160,6 +1211,28 @@ function App() {
                     </span>
                   </div>
                 )}
+                {/* Paint Mixing Recipe Mixer */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px dashed var(--border-light)', paddingTop: '0.4rem', marginTop: '0.2rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>🧪 Paint Mixing Recipe:</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.1rem' }}>
+                    {getPaintRecipe(activePalette[selectedColorIndex]).map((recipeItem, itemIdx) => (
+                      <span key={itemIdx} style={{
+                        fontSize: '0.7rem',
+                        fontWeight: '600',
+                        padding: '0.15rem 0.4rem',
+                        borderRadius: '4px',
+                        border: '1.5px solid var(--border-color)',
+                        backgroundColor: recipeItem.name === 'Red' ? '#FFD2D2' :
+                                         recipeItem.name === 'Yellow' ? '#FFFFD2' :
+                                         recipeItem.name === 'Blue' ? '#D2E2FF' :
+                                         recipeItem.name === 'White' ? '#FFFFFF' : '#E2E2E2',
+                        color: '#2C2627'
+                      }}>
+                        {recipeItem.percentage}% {recipeItem.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
