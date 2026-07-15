@@ -67,6 +67,24 @@ const PRESETS = {
   sunset: {
     name: 'Sunset Glow',
     colors: ['#F72585', '#B5179E', '#7209B7', '#560BAD', '#480CA8', '#3F37C9', '#3A0CA3', '#4361EE', '#4CC9F0', '#F77F00', '#FCBF49', '#EAE2B7']
+  },
+  faber36: {
+    name: 'Faber-Castell Polychromos (36 Pack)',
+    colors: [
+      '#FFFFFF', '#FFED00', '#FFCD00', '#FFA600', '#FF7F00', '#FF3700', '#E5003F', '#C4004F',
+      '#9B0059', '#662F8B', '#3E4095', '#0054A6', '#0072BC', '#00A0E9', '#00A79D', '#00A651',
+      '#7FBA00', '#8CC63F', '#005826', '#1E4620', '#A17D58', '#8B5A2B', '#603913', '#C7A17F',
+      '#231F20', '#7F7F7F', '#D1D1D1', '#FF66B2', '#FFCCFF', '#CCFFFF', '#99FF99', '#FFFF99',
+      '#FFCC99', '#FF9999', '#CC99FF', '#99CCFF'
+    ]
+  },
+  cotman24: {
+    name: 'Winsor & Newton Cotman (24 Pack)',
+    colors: [
+      '#FFF000', '#FFD800', '#FFA800', '#FF5A00', '#FF0000', '#C00000', '#840000', '#8C008C',
+      '#480088', '#0000CC', '#0066FF', '#0099FF', '#00B0B0', '#009900', '#006600', '#669900',
+      '#996633', '#804000', '#663300', '#4A2500', '#1A1A1A', '#FFFFFF', '#CCCCCC', '#EAEAEA'
+    ]
   }
 };
 
@@ -88,6 +106,22 @@ const PENCIL_NAMES = {
   '#324AB2': 'Violet Blue', '#0073CF': 'True Blue', '#2A52BE': 'Cerulean Blue', '#00416A': 'Indigo Blue',
   '#8DB600': 'Apple Green', '#089404': 'True Green', '#355E3B': 'Grass Green', '#013220': 'Dark Green',
   '#8B5A2B': 'Sienna Brown', '#5C4033': 'Dark Brown', '#000000': 'Black', '#FFFFFF': 'White'
+};
+
+// Faber-Castell Polychromos physical names mapping
+const FABER_POLY_NAMES = {
+  '#FFFFFF': 'White', '#FFED00': 'Light Yellow Glaze', '#FFCD00': 'Cadmium Yellow',
+  '#FFAE42': 'Dark Cadmium Yellow', '#FF7F00': 'Dark Chrome Yellow', '#FF3700': 'Pale Geranium Lake',
+  '#E5003F': 'Middle Cadmium Red', '#C4004F': 'Permanent Carmine', '#9B0059': 'Magenta',
+  '#662F8B': 'Mauve', '#3E4095': 'Ultramarine', '#0054A6': 'Dark Phthalo Blue',
+  '#007200': 'Emerald Green', '#00A651': 'Light Phthalo Green', '#7FBA00': 'Grass Green',
+  '#8CC63F': 'May Green', '#005826': 'Deep Cobalt Green', '#A17D58': 'Burnt Ochre',
+  '#8B5A2B': 'Sanguine', '#603913': 'Walnut Brown', '#231F20': 'Black', '#7F7F7F': 'Warm Grey IV',
+  '#D1D1D1': 'Cold Grey I', '#0072BC': 'Cobalt Blue', '#00A0E9': 'Light Phthalo Blue',
+  '#00A79D': 'Cobalt Turquoise', '#1E4620': 'Olive Green Yellowish', '#C7A17F': 'Naples Yellow',
+  '#FF66B2': 'Pink Madder Lake', '#FFCCFF': 'Light Magenta', '#CCFFFF': 'Helioblue-Reddish',
+  '#99FF99': 'Light Green', '#FFFF99': 'Cream', '#FFCC99': 'Light Flesh',
+  '#FF9999': 'Medium Flesh', '#CC99FF': 'Red-Violet', '#99CCFF': 'Sky Blue'
 };
 
 function App() {
@@ -287,7 +321,7 @@ function App() {
     
     // Max RGB distance is sqrt(3 * 255^2) = 441.67
     const similarity = Math.round((1 - Math.sqrt(minDist) / 441.67) * 100);
-    const nameMap = presetKey === 'wax24' ? WAX_NAMES : PENCIL_NAMES;
+    const nameMap = presetKey === 'wax24' ? WAX_NAMES : (presetKey === 'pencil24' ? PENCIL_NAMES : FABER_POLY_NAMES);
     return {
       name: nameMap[bestHex] || bestHex,
       hex: bestHex,
@@ -1200,6 +1234,15 @@ function App() {
                     {getClosestColorMatch(activePalette[selectedColorIndex], 'pencil24')?.name}
                     <span style={{ color: 'var(--success-color)', fontWeight: 'normal', marginLeft: '0.25rem' }}>
                       ({getClosestColorMatch(activePalette[selectedColorIndex], 'pencil24')?.similarity}%)
+                    </span>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Closest Polychromos:</span>
+                  <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                    {getClosestColorMatch(activePalette[selectedColorIndex], 'faber36')?.name}
+                    <span style={{ color: 'var(--success-color)', fontWeight: 'normal', marginLeft: '0.25rem' }}>
+                      ({getClosestColorMatch(activePalette[selectedColorIndex], 'faber36')?.similarity}%)
                     </span>
                   </span>
                 </div>
