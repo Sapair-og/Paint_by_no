@@ -283,6 +283,7 @@ function App() {
 
   // Helper RGB converters
   const hexToRgb = (hex) => {
+    if (!hex || typeof hex !== 'string') return [0, 0, 0];
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? [
       parseInt(result[1], 16),
@@ -413,6 +414,11 @@ function App() {
   // Image/Video upload
   const handleImageFile = (file) => {
     if (!file) return;
+
+    // Clean up previous video object URLs to prevent browser memory leaks
+    if (videoSrc) {
+      URL.revokeObjectURL(videoSrc);
+    }
 
     if (file.type.startsWith('video/')) {
       // Process video file
@@ -747,6 +753,16 @@ function App() {
     }
 
     const updatedPalette = nextPalette.filter((_, idx) => idx !== indexToRemove);
+
+    if (updatedPalette.length === 0) {
+      setCustomPalette([]);
+      setSelectedPreset('auto');
+      if (imageData) {
+        processImage(imageData, k, minFacetSize, null, smoothingPasses);
+      }
+      return;
+    }
+
     setCustomPalette(updatedPalette);
     setSelectedPreset('custom');
 
